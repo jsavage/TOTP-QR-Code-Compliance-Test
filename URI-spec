@@ -1,0 +1,582 @@
+# TOTP QR Code Compliance Specification
+
+## Document Information
+
+**Title:** TOTP QR Code URI Encoding Requirements  
+**Version:** 1.0  
+**Date:** January 2026  
+**Based on:** RFC 6238 - Time-Based One-Time Password Algorithm  
+**Related Standards:** RFC 4226 (HOTP), RFC 3986 (URI Generic Syntax), RFC 4648 (Base Encodings)
+
+---
+
+## 1. Scope
+
+This specification defines the **mandatory requirements** for QR codes used in Time-Based One-Time Password (TOTP) two-factor authentication systems that comply with RFC 6238. 
+
+The specification focuses exclusively on the **encoding format and content** of the provisioning URI that must be embedded within the QR code. These requirements enable interoperability between TOTP token generators (authentication applications) and validation servers.
+
+### In Scope:
+- URI scheme and structure validation
+- OTP type identification (TOTP vs HOTP)
+- Account label format and encoding
+- Shared secret parameter requirements
+- Secret encoding and minimum security levels
+- Optional algorithm, period, and digits parameters
+- URI encoding compliance per RFC 3986
+
+### Out of Scope:
+- QR code visual/technical specifications (size, error correction, version)
+- Server-side validation logic and time synchronization
+- Key generation and secure storage mechanisms
+- Network transmission security (TLS/SSL)
+- User interface and display requirements
+- Resynchronization procedures
+- Clock drift tolerance policies
+
+---
+
+## 2. Normative References
+
+- **RFC 6238**: TOTP: Time-Based One-Time Password Algorithm
+- **RFC 4226**: HOTP: An HMAC-Based One-Time Password Algorithm
+- **RFC 3986**: Uniform Resource Identifier (URI): Generic Syntax
+- **RFC 4648**: The Base16, Base32, and Base64 Data Encodings
+- **RFC 2104**: HMAC: Keyed-Hashing for Message Authentication
+
+---
+
+## 3. Requirements
+
+### 3.1 URI Structure Requirements
+
+#### R01: URI Scheme
+**Requirement:** The QR code MUST encode a URI using the `otpauth://` scheme.
+
+**Rationale:** The `otpauth://` scheme is the established standard for provisioning OTP tokens and ensures authenticator applications can recognize and process the URI.
+
+**Test Method:** Verify the decoded URI string begins with `otpauth://` (case-insensitive).
+
+**Example:**
+```
+✓ otpauth://totp/Example:user@example.com?secret=ABCD...
+✗ https://example.com/totp?secret=ABCD...
+✗ totp://example.com?secret=ABCD...
+```
+
+---
+
+#### R02: OTP Type Declaration
+**Requirement:** The URI MUST specify `totp` as the OTP type in the authority component.
+
+**Rationale:** Distinguishes Time-Based OTP (TOTP) from counter-based HOTP and other OTP variants. This is critical for correct algorithm implementation.
+
+**Test Method:** Parse the URI and verify the network location (netloc) component equals `totp` (case-insensitive).
+
+**URI Structure:** `otpauth://totp/label?parameters`
+
+**Example:**
+```
+✓ otpauth://totp/Example:user?secret=ABCD...
+✗ otpauth://hotp/Example:user?secret=ABCD...
+✗ otpauth://steam/Example:user?secret=ABCD...
+```
+
+---
+
+#### R03: Account Label Presence
+**Requirement:** The URI MUST contain a non-empty label (account identifier) in the path component following the OTP type.
+
+**Rationale:** The label identifies the account or service to the user in the authenticator application. Without it, users cannot distinguish between multiple tokens.
+
+**Test Method:** Extract the path component, remove leading slash, and verify it contains at least one character before any query parameters.
+
+**Format Options:**
+- Simple label: `AccountName`
+- Issuer-prefixed: `Issuer:AccountName`
+- Email format: `user@example.com`
+
+**Example:**
+```
+✓ otpauth://totp/alice?secret=ABCD...
+✓ otpauth://totp/GitHub:alice@example.com?secret=ABCD...
+✗ otpauth://totp/?secret=ABCD...
+✗ otpauth://totp?secret=ABCD...
+```
+
+---
+
+#### R13: Label Encoding Compliance
+**Requirement:** The label MUST be properly percent-encoded according to RFC 3986. Special characters with reserved meaning in URIs (`:`, `/`, `?`, `#`, `[`, `]`, `@`) MUST be percent-encoded when used as literal characters in the label.
+
+**Rationale:** Unencoded special characters can break URI parsing, causing the label or parameters to be misinterpreted by authenticator applications.
+
+**Test Method:** Inspect the raw label in the path component for unencoded reserved characters.
+
+**Encoding Table:**
+| Character | Encoding | Notes |
+|-----------|----------|-------|
+| `:` (colon) | `%3A` | Separates scheme and authority |
+| `/` (slash) | `%2F` | Path component separator |
+| `?` (question mark) | `%3F` | Query string delimiter |
+| `#` (hash) | `%23` | Fragment identifier |
+| `@` (at sign) | `%40` | Used in authority component |
+| `[` `]` (brackets) | `%5B` `%5D` | IPv6 address delimiters |
+| `.` (period) | OK | Unreserved character |
+| `-` (hyphen) | OK | Unreserved character |
+| `_` (underscore) | OK | Unreserved character |
+
+**Example:**
+```
+✓ otpauth://totp/GitHub%3Auser?secret=ABCD...
+✓ otpauth://totp/Site%2FSubsite?secret=ABCD...
+✗ otpauth://totp/GitHub:user?secret=ABCD...
+✗ otpauth://totp/https://example.com?secret=ABCD...
+```
+
+---
+
+### 3.2 Secret Parameter Requirements
+
+#### R04: Secret Parameter Existence
+**Requirement:** The URI MUST contain a `secret` parameter in the query string.
+
+**Rationale:** The shared secret is the cryptographic key that enables TOTP generation. Without it, the token cannot function.
+
+**Test Method:** Parse the query string and verify a parameter named `secret` exists.
+
+**Reference:** RFC 6238 Section 3 (R2) and Section 4.2
+
+**Example:**
+```
+✓ otpauth://totp/user?secret=JBSWY3DPEHPK3PXP
+✗ otpauth://totp/user?key=JBSWY3DPEHPK3PXP
+✗ otpauth://totp/user?issuer=Example
+```
+
+---
+
+#### R05: Secret Non-Empty
+**Requirement:** The `secret` parameter MUST contain a non-empty value.
+
+**Rationale:** An empty secret provides no cryptographic security and would generate predictable or invalid OTPs.
+
+**Test Method:** Extract the `secret` parameter value and verify its length is greater than zero.
+
+**Example:**
+```
+✓ otpauth://totp/user?secret=JBSWY3DPEHPK3PXP
+✗ otpauth://totp/user?secret=
+✗ otpauth://totp/user?secret
+```
+
+---
+
+#### R06: Secret Base32 Encoding
+**Requirement:** The secret MUST contain only valid Base32 characters as defined in RFC 4648: uppercase letters A-Z, digits 2-7, and optional padding character `=`.
+
+**Rationale:** RFC 4226 and RFC 6238 specify Base32 encoding for the shared secret. Invalid characters indicate encoding errors or corrupted data.
+
+**Test Method:** Validate the secret string matches the regular expression `^[A-Z2-7]+=*$` and verify padding characters only appear at the end.
+
+**Valid Base32 Alphabet:** `ABCDEFGHIJKLMNOPQRSTUVWXYZ234567=`
+
+**Example:**
+```
+✓ JBSWY3DPEHPK3PXP
+✓ JBSWY3DPEHPK3PXP====
+✗ jbswy3dpehpk3pxp (lowercase not standard)
+✗ JBSWY3DPEHPK3PX1 (1 is not valid Base32)
+✗ JBSWY3DPEHPK3PX0 (0 is not valid Base32)
+✗ JBSWY3DPEHPK3PX8 (8 is not valid Base32)
+```
+
+---
+
+#### R07: Minimum Secret Length (128-bit)
+**Requirement:** The secret MUST decode to at least 128 bits (16 bytes) of entropy.
+
+**Rationale:** Provides minimum acceptable security against brute-force attacks. This is a mandatory baseline for cryptographic security.
+
+**Test Method:** Base32 decode the secret and verify the resulting byte array is at least 16 bytes long.
+
+**Calculation:** 26 Base32 characters × 5 bits/character = 130 bits (minimum practical encoding)
+
+**Reference:** General cryptographic best practices for symmetric keys
+
+**Example:**
+```
+✓ JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP (64 chars = 320 bits)
+✓ JBSWY3DPEHPK3PXPJBSWY3DP (32 chars = 160 bits)
+✓ JBSWY3DPEHPK3PXPJBSW (26 chars = 130 bits)
+✗ JBSWY3DPEHPK3PXP (20 chars = 100 bits) - TOO SHORT
+```
+
+---
+
+#### R08: Recommended Secret Length (160-bit for SHA-1)
+**Requirement:** The secret SHOULD decode to at least 160 bits (20 bytes) when using SHA-1 (default algorithm).
+
+**Rationale:** RFC 6238 Section 5.1 states "Keys SHOULD be of the length of the HMAC output to facilitate interoperability." SHA-1 HMAC output is 160 bits.
+
+**Test Method:** Base32 decode the secret and verify the resulting byte array is at least 20 bytes long.
+
+**Calculation:** 32 Base32 characters × 5 bits/character = 160 bits
+
+**Reference:** RFC 6238 Section 5.1
+
+**Algorithm-Specific Recommendations:**
+- SHA-1 (default): 160 bits (20 bytes, 32 Base32 chars)
+- SHA-256: 256 bits (32 bytes, 52 Base32 chars)
+- SHA-512: 512 bits (64 bytes, 103 Base32 chars)
+
+**Example:**
+```
+✓ JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP (32+ chars)
+⚠ JBSWY3DPEHPK3PXPJBSWY3DP (28 chars = 140 bits) - Below recommended
+✗ JBSWY3DPEHPK3PXP (20 chars = 100 bits) - Below minimum
+```
+
+---
+
+### 3.3 Optional Parameter Requirements
+
+#### R09: Algorithm Parameter Validation
+**Requirement:** IF the `algorithm` parameter is present, it MUST have one of the following values: `SHA1`, `SHA256`, or `SHA512` (case-insensitive).
+
+**Default:** If the `algorithm` parameter is absent, SHA-1 MUST be assumed per RFC 4226.
+
+**Rationale:** RFC 6238 Section 1.2 explicitly allows HMAC-SHA-256 and HMAC-SHA-512 as alternatives to HMAC-SHA-1. No other hash functions are standardized.
+
+**Test Method:** If `algorithm` parameter exists, verify its value (case-insensitive) is in the set {SHA1, SHA256, SHA512}.
+
+**Reference:** RFC 6238 Section 1.2
+
+**Example:**
+```
+✓ algorithm=SHA1
+✓ algorithm=SHA256
+✓ algorithm=sha512 (case-insensitive)
+✓ (parameter absent - defaults to SHA1)
+✗ algorithm=MD5
+✗ algorithm=SHA3
+```
+
+---
+
+#### R10: Period Parameter Validation
+**Requirement:** IF the `period` parameter is present, it MUST be a positive integer representing the time step in seconds.
+
+**Default:** If the `period` parameter is absent, 30 seconds MUST be assumed per RFC 6238.
+
+**Rationale:** RFC 6238 Section 4.1 defines X (time step) as a system parameter with a default of 30 seconds. Section 5.2 recommends this default for security/usability balance.
+
+**Test Method:** If `period` parameter exists, verify it can be parsed as an integer and is greater than zero.
+
+**Reference:** RFC 6238 Sections 4.1 and 5.2
+
+**Common Values:**
+- `30` (recommended default)
+- `60` (less secure but more user-friendly)
+
+**Example:**
+```
+✓ period=30
+✓ period=60
+✓ (parameter absent - defaults to 30)
+✗ period=0
+✗ period=-30
+✗ period=abc
+```
+
+---
+
+#### R11: Digits Parameter Validation
+**Requirement:** IF the `digits` parameter is present, it MUST be a positive integer representing the number of digits in the generated OTP.
+
+**Default:** If the `digits` parameter is absent, 6 digits is the standard default.
+
+**Rationale:** Specifies the OTP output length. RFC 4226 and RFC 6238 support variable-length outputs, with 6 and 8 being most common for usability and security balance.
+
+**Test Method:** If `digits` parameter exists, verify it can be parsed as an integer and is greater than zero.
+
+**Reference:** RFC 4226 Section 5.3
+
+**Common Values:**
+- `6` (standard default, good balance)
+- `8` (higher security, slightly less convenient)
+
+**Example:**
+```
+✓ digits=6
+✓ digits=8
+✓ (parameter absent - defaults to 6)
+✗ digits=0
+✗ digits=-1
+✗ digits=abc
+```
+
+---
+
+### 3.4 Type Safety Requirements
+
+#### R12: Counter Parameter Prohibition
+**Requirement:** The URI MUST NOT contain a `counter` parameter.
+
+**Rationale:** The `counter` parameter is specific to HOTP (event-based OTP per RFC 4226). Its presence in a TOTP URI indicates a configuration error or type mismatch. TOTP uses time-based counters, not event counters.
+
+**Test Method:** Parse the query string and verify no parameter named `counter` exists.
+
+**Reference:** RFC 4226 (HOTP) vs RFC 6238 (TOTP) distinction
+
+**Example:**
+```
+✓ otpauth://totp/user?secret=ABCD&period=30
+✗ otpauth://totp/user?secret=ABCD&counter=0
+✗ otpauth://hotp/user?secret=ABCD&counter=0 (correct for HOTP)
+```
+
+---
+
+## 4. Compliance Summary
+
+A TOTP QR code URI is **compliant** if and only if it satisfies all of the following:
+
+### Mandatory Requirements (Must Pass):
+- ✓ R01: Uses `otpauth://` scheme
+- ✓ R02: Specifies `totp` type
+- ✓ R03: Contains non-empty label
+- ✓ R04: Contains `secret` parameter
+- ✓ R05: Secret is non-empty
+- ✓ R06: Secret is valid Base32
+- ✓ R07: Secret ≥ 128 bits (16 bytes)
+- ✓ R12: No `counter` parameter present
+- ✓ R13: Label properly percent-encoded
+
+### Conditional Requirements (Must Pass If Present):
+- ✓ R09: `algorithm` ∈ {SHA1, SHA256, SHA512}
+- ✓ R10: `period` is positive integer
+- ✓ R11: `digits` is positive integer
+
+### Recommended Requirements (Should Pass):
+- ✓ R08: Secret ≥ 160 bits (20 bytes) for SHA-1
+
+---
+
+## 5. Example Compliant URIs
+
+### Minimal Compliant URI (All Defaults):
+```
+otpauth://totp/alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+```
+- Algorithm: SHA1 (default)
+- Period: 30 seconds (default)
+- Digits: 6 (default)
+- Secret: 160 bits ✓
+
+### Fully Specified URI:
+```
+otpauth://totp/GitHub%3Aalice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=GitHub&algorithm=SHA1&digits=6&period=30
+```
+- All parameters explicit
+- Label properly encoded (`GitHub%3Aalice` → `GitHub:alice`)
+
+### SHA-256 with 8 Digits:
+```
+otpauth://totp/MyService%3Auser?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DP&algorithm=SHA256&digits=8&period=60
+```
+- 256-bit secret (52 Base32 chars)
+- SHA-256 algorithm
+- 8-digit OTP output
+- 60-second time window
+
+---
+
+## 6. Example Non-Compliant URIs
+
+### Missing Secret (R04 Failure):
+```
+✗ otpauth://totp/alice?issuer=Example
+```
+
+### Secret Too Short (R07 Failure):
+```
+✗ otpauth://totp/alice?secret=JBSWY3DP
+```
+- Only 40 bits (< 128 minimum)
+
+### Invalid Base32 (R06 Failure):
+```
+✗ otpauth://totp/alice?secret=INVALID123!@#
+```
+- Contains invalid characters
+
+### Unencoded Label (R13 Failure):
+```
+✗ otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+```
+- Colon should be `%3A`
+
+### Wrong OTP Type (R02 Failure):
+```
+✗ otpauth://hotp/alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&counter=0
+```
+- HOTP instead of TOTP
+
+### Invalid Algorithm (R09 Failure):
+```
+✗ otpauth://totp/alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&algorithm=MD5
+```
+- MD5 not supported
+
+### Counter Parameter Present (R12 Failure):
+```
+✗ otpauth://totp/alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&counter=0
+```
+- Counter is for HOTP only
+
+---
+
+## 7. Testing Methodology
+
+### 7.1 Test Input
+- QR code image file (PNG, JPG, or other image format)
+- Decoded URI string from QR code
+
+### 7.2 Test Process
+1. Scan QR code using standard decoding library (e.g., zbarimg)
+2. Extract URI string from QR code data
+3. Execute all 13 requirement tests in sequence
+4. Record pass/fail status and evidence for each test
+5. Generate compliance report
+
+### 7.3 Test Result Classification
+- **PASS**: URI meets the requirement
+- **FAIL**: URI violates the requirement
+- **N/A**: Requirement not applicable (e.g., optional parameter absent)
+
+### 7.4 Overall Compliance Determination
+A URI is **COMPLIANT** if:
+- All mandatory requirements (R01-R07, R12-R13) PASS
+- All conditional requirements (R09-R11) PASS when parameters are present
+- Recommended requirements (R08) ideally PASS but failure is not critical
+
+---
+
+## 8. Implementation Notes
+
+### 8.1 Base32 Decoding
+- Python: `base64.b32decode()`
+- Padding may or may not be present (handle both cases)
+- Case normalization: convert to uppercase before decoding
+
+### 8.2 URI Parsing
+- Python: `urllib.parse.urlparse()`
+- Be aware of percent-encoding in label extraction
+- Use `urllib.parse.unquote()` to decode percent-encoded labels for display
+
+### 8.3 Parameter Defaults
+Implementations must apply defaults when parameters are absent:
+- `algorithm=SHA1` (if not specified)
+- `period=30` (if not specified)
+- `digits=6` (if not specified)
+
+### 8.4 Case Sensitivity
+- URI scheme: case-insensitive (`OTPAUTH://` = `otpauth://`)
+- OTP type: case-insensitive (`TOTP` = `totp`)
+- Parameter names: case-sensitive (`secret` ≠ `SECRET`)
+- Parameter values: depends on parameter
+  - `algorithm`: case-insensitive (`SHA1` = `sha1`)
+  - `secret`: case-sensitive (Base32 is uppercase)
+
+---
+
+## 9. Security Considerations
+
+### 9.1 Secret Strength
+- Minimum 128-bit secrets provide baseline security
+- 160-bit secrets recommended for SHA-1 (per RFC 6238)
+- Longer secrets for SHA-256 and SHA-512 enhance security
+- Secrets should be generated using cryptographically secure random number generators
+
+### 9.2 QR Code Display
+- QR codes should be displayed over secure channels only
+- Time-limited display recommended to prevent photography/capture
+- Consider user authentication before displaying QR codes
+
+### 9.3 Encoding Compliance
+- Proper percent-encoding prevents URI injection attacks
+- Unencoded special characters can break parsing and create security gaps
+
+### 9.4 Algorithm Selection
+- SHA-1 remains acceptable for TOTP (different from digital signatures)
+- SHA-256 or SHA-512 recommended for new implementations
+- Consider secret length when selecting algorithm
+
+---
+
+## 10. References
+
+### Standards Documents
+- [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238) - TOTP: Time-Based One-Time Password Algorithm
+- [RFC 4226](https://www.rfc-editor.org/rfc/rfc4226) - HOTP: An HMAC-Based One-Time Password Algorithm
+- [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) - Uniform Resource Identifier (URI): Generic Syntax
+- [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) - The Base16, Base32, and Base64 Data Encodings
+- [RFC 2104](https://www.rfc-editor.org/rfc/rfc2104) - HMAC: Keyed-Hashing for Message Authentication
+
+### Related Resources
+- Google Authenticator Key URI Format (de facto standard)
+- OATH (Initiative for Open Authentication)
+
+---
+
+## Appendix A: Requirement Traceability Matrix
+
+| Req ID | Requirement Summary | RFC 6238 Reference | Priority |
+|--------|---------------------|-------------------|----------|
+| R01 | otpauth:// scheme | Section 4.2 (implicit) | Mandatory |
+| R02 | TOTP type declaration | Section 1 (title/scope) | Mandatory |
+| R03 | Label presence | Section 4.2 | Mandatory |
+| R04 | Secret parameter exists | Section 3 (R2) | Mandatory |
+| R05 | Secret non-empty | Section 3 (R2) | Mandatory |
+| R06 | Secret Base32 encoding | RFC 4226 compatibility | Mandatory |
+| R07 | Secret ≥ 128 bits | Cryptographic baseline | Mandatory |
+| R08 | Secret ≥ 160 bits | Section 5.1 | Recommended |
+| R09 | Algorithm validation | Section 1.2 | Conditional |
+| R10 | Period validation | Section 4.1 | Conditional |
+| R11 | Digits validation | RFC 4226 Section 5.3 | Conditional |
+| R12 | No counter parameter | TOTP vs HOTP distinction | Mandatory |
+| R13 | Label encoding | RFC 3986 | Mandatory |
+
+---
+
+## Appendix B: Test Suite Information
+
+**Test Suite Name:** TOTP QR Code Compliance Test Suite  
+**Implementation Language:** Python 3  
+**Required Dependencies:**
+- `zbar-tools` (for QR code scanning)
+- Python standard library: `urllib`, `base64`, `subprocess`, `re`
+
+**Usage:**
+```bash
+python totp_test.py
+```
+
+**Output:**
+- Detailed pass/fail results for each requirement
+- Evidence for each test (what was found, what was expected)
+- Overall compliance determination
+- Exit code 0 for compliant, 1 for non-compliant
+
+---
+
+## Document Revision History
+
+| Version | Date | Changes | Author |
+|---------|------|---------|--------|
+| 1.0 | January 2026 | Initial release R1-12 | JS prompted Claude AI |
+| 1.1 | January 2026 | Added Fixed issue with R2 and added R13 |
+---
+
+**END OF SPECIFICATION**
